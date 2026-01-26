@@ -79,15 +79,27 @@
 **※下図の`APIホスト`を誰でも簡単に作成できることを目指す**
 ```mermaid
 flowchart TD
-  A[アクター] -->|入力| B[Web/ゲームアプリ]
-  B -->|"APIキー<br>(非ローカルではngrok等によるHTTPS化を推奨)"| C{検証}
+  subgraph ゲームクライアント
+  H[プレイヤー] --> A
+  end
+  A[ゲームクライアント] -->|ランキング・ログの登録、<br>自分の順位の確認<br>リクエスト| B{APIキー認証}
   subgraph サーバ
+  B -->|認証通過| C[APIゲートウェイ]
   subgraph APIホスト
-  C -->|受理| D[Service]
+  C <-->|読み書きを行う| D[("DB(SQlite)")]
   end
-  D --> E[("DB(SQLite)")]
+  G -->|認証通過| C
   end
-  C -->|拒否| B
+  C -->|ランキングや順位情報の<br>レスポンス| A
+  subgraph public
+  I[public] --> E
+  end
+  E["ブラウザ<br>(ランキング表示サイト)"] <-->|ランキング情報取得リクエスト・応答| C
+  subgraph admin
+  J[管理者] --> F[コンソールなど]
+  end
+  F -->|ランキング・ログの取得,<br>レコードの無効化<br>リクエスト| G{BASIC認証}
+  C --> F
 ```
 
 ***
@@ -139,7 +151,7 @@ flowchart TD
         *   レコードID：INTEGER(PK)
         *   クライアントUUID：TEXT(非NULL)：クライアント区別用UUID、ログ登録時に参照する
         *   プレイ回数：INTEGER(非NULL)：クライアント側のプレイ回数、ログ登録時に参照する
-        *   データ：TEXT：JSONを用いたデータ領域
+        *   データ：BLOB：SQliteのJSONBを用いたデータ領域
             *   ランキング表示名：TEXT
             *   アイテム取得数：INTEGER
             *   移動距離：FLOAT
@@ -147,6 +159,7 @@ flowchart TD
         *   登録日時：DATETIME(非NULL)
         *   無効化：BOOLEAN：Trueの場合ランキングに表示しない
         *   \+インデックスのための仮想列
+        *   ユニーク制約(UUID, プレイ回数)
     *   ログ：プレイ中の行動履歴
         *   ログID：INTEGER(PK)
         *   セッションID：TEXT(FK)：ログが結びつけられるセッションのID
@@ -159,7 +172,7 @@ erDiagram
         INTEGER id PK "Auto Increment"
         TEXT idempotency_key "UUID"
         INTEGER local_play_count "クライアント側プレイ回数"
-        TEXT data "JSON本体: {name, items, dist, time}"
+        BLOB data "JSONB本体: {name, items, dist, time}"
         DATETIME created_at "DEFAULT (datetime('now', 'localtime')"
         BOOLEAN disable "Trueでランキングに表示しない"
         INTEGER v_item_count "Generated (Virtual)"
@@ -296,6 +309,8 @@ flowchart LR
 
 *   要件の妥当性（根拠）：
     *   最低限の設定のみですぐに使い始められることを目指し、ゲーム開発者側で設定が必要になる事柄をできる限り避けた設計及び要件設定にしている。
+    *   動的な仮想列生成により、設定ファイルに応じた動的なインデックス設定を可能にしている。また、JSONデータへのアクセス回数が非常に多くなるため、パースが不要になるJSONBを用いる。
+    インサートが少しだけ遅くなるとのことだが、実用上は問題ない範囲かつパースが不要になるメリットの方が大きいと判断。
     *   ログ登録はリストでの登録とすることで、複数のログをまとめて送信させ、リクエスト回数を減らす設計にすることをゲーム開発者に促す。
     *   同時接続数などは、試遊会など限定的に公開される環境で使う上ではかなり余裕を持った目標設定である。
 *   実装への影響（第5回のスコープ）：
@@ -776,6 +791,7 @@ components:
 *   【Go言語】フレームワーク8種のベンチマークを測定してみた(https://qiita.com/twrcd1227/items/d871480ec9f8a581099e)
 *   Go Fiber公式ドキュメント (https://docs.gofiber.io/)
 *   SQLite で利用できる JSON 関数の使い方総まとめ(https://qiita.com/nimzo6689/items/785a3de61fa68ef975c5)
+*   SQlite JSONB（https://sqlite.org/jsonb.html）
 *   SQLite Generated Columns (https://sqlite.org/gencol.html)
 *   Idempotency-Key Headerの現状・仕様・実装の理解を助けるリソースまとめ(https://ohbarye.hatenablog.jp/entry/2021/09/06/idempotency-key-header-resources)
 
