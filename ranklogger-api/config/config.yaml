@@ -38,6 +38,8 @@ record_schema:
   - name: "display_name"
     type: "TEXT"
     is_index: false # ランキング集計対象外（表示用）
+    min: 3
+    max: 20
   
   - name: "score"
     type: "INTEGER"
@@ -48,8 +50,10 @@ record_schema:
     type: "FLOAT"
     is_index: true
     order: "asc"    # 小さい方（速い方）が上位
+    min: 0
   
   - name: "item_count"
     type: "INTEGER"
     is_index: true
     order: "desc"
+    min: 0

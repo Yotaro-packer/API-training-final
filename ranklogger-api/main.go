@@ -49,7 +49,7 @@ func main() {
 
 	api.Get("/records", handlers.GetRecords(db, cfg))
 
-	api.Post("/records", handlers.PostRecord(db))
+	api.Post("/records", handlers.PostRecord(db, cfg))
 
 	// 6. サーバーの起動
 	log.Printf("サーバーを起動します (Port: %d)...", cfg.Server.Port)

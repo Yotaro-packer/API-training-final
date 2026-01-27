@@ -170,8 +170,8 @@ flowchart TD
 erDiagram
     GAME_SESSION {
         INTEGER id PK "Auto Increment"
-        TEXT idempotency_key "UUID"
-        INTEGER local_play_count "クライアント側プレイ回数"
+        TEXT uuid
+        INTEGER play_count "クライアント側プレイ回数"
         BLOB data "JSONB本体: {name, items, dist, time}"
         DATETIME created_at "DEFAULT (datetime('now', 'localtime')"
         BOOLEAN disable "Trueでランキングに表示しない"
@@ -181,9 +181,9 @@ erDiagram
     }
 
     LOG {
-        INTEGER log_id PK "Auto Increment"
-        TEXT game_session_id FK "Foreign Key"
-        INTEGER log_type "ログ種別ID"
+        INTEGER id PK "Auto Increment"
+        TEXT session_id FK "Foreign Key"
+        INTEGER type "ログ種別ID"
         TEXT content "JSON本体: 行動詳細など"
     }
 
@@ -207,9 +207,9 @@ erDiagram
 
 | # | メソッド | パス        | リクエスト（要約）        | レスポンス（要約）          | ステータス               | 認可     | レート制限   |
 | - | ---- | --------- | ---------------- | ------------------ | ------------------- | ------ | ------- |
-| 1 | GET  | /records | query: sort_by,sort_order,offset,limit | 200: list\<Records\> | 200/400/404/429/500         | `public` | 200/min |
+| 1 | GET  | /records | query: sort_by,is_reverse,offset,limit | 200: list\<Records\> | 200/400/404/429/500         | `public` | 200/min |
 | 2 | POST | /records | body: GameRecord | 200/201: Message | 200/201/400/401/403/429/500 | `game-client` | 200/min  |
-| 3 | GET | /records/detail | query: sort_by,sort_order,offset,limit | 200: list\<RecordsWithDetail\> | 200/400/401/403/429/500 | `admin` | 20/min |
+| 3 | GET | /records/detail | query: sort_by,is_reverse,offset,limit | 200: list\<RecordsWithDetail\> | 200/400/401/403/429/500 | `admin` | 20/min |
 | 4 | PATCH | /records/{SessionId} | body: disable | 200:message | 200/400/401/403/404/429/500 | `admin` | 100/min |
 | 5 | GET | /ranks/{SessionId} ||200:list\<Ranks\> | 200/400/401/403/404/429/500 | `admin`, `game-client` | 100/min |
 | 6 | GET | /logs/{SessionId} | query: log_type,offset,limit | 200: list\<logs\> | 200/400/401/403/404/429/500 | `admin` | 50/min |
@@ -369,12 +369,12 @@ paths:
           schema:
             type: string
             default: score
-        - name: sort_order
+        - name: is_reverse
           in: query
+          description: Trueでランキング下位から表示する
           schema:
-            type: string
-            enum: [asc, desc]
-            default: desc
+            type: boolean
+            default: false
         - name: offset
           in: query
           schema:
@@ -438,7 +438,7 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
   # ----------------------------------------------------------------
-  # 3. GET /records/detail (管理者向け全件取得)
+  # 3. GET /records/detail (管理者向け詳細取得)
   # ----------------------------------------------------------------
   /records/detail:
     get:
@@ -451,6 +451,18 @@ paths:
       security:
         - AdminAuth: []
       parameters:
+        - name: sort_by
+          in: query
+          description: ソート基準となるキー（例：score, time）
+          schema:
+            type: string
+            default: score
+        - name: is_reverse
+          in: query
+          description: Trueでランキング下位から表示する
+          schema:
+            type: boolean
+            default: false
         - name: offset
           in: query
           schema:
