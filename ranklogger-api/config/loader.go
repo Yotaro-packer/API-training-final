@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -71,6 +72,13 @@ func LoadConfig() (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	if cfg.Auth.GameAPIKey == "your-game-client-secret-key" {
+		return nil, fmt.Errorf("APIキーを初期値から変更してください。\nconfig/config.yamlの中のauth:game_api_keyを確認してください。")
+	}
+	if cfg.Auth.AdminPasswordHash == "" {
+		return nil, fmt.Errorf("管理者パスワードの設定をしてください。\nconfig/config.yamlの中のauth:admin_password_hashを確認してください。")
 	}
 
 	for _, field := range cfg.Schema {

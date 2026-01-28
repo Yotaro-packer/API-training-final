@@ -12,9 +12,9 @@ auth:
   # ゲームクライアント用のAPIキー
   game_api_key: "your-game-client-secret-key"
   # 管理者認証
-  # ハッシュ化したパスワードの生成にはtool/hasher.exeを使用
+  # ハッシュ化したパスワードの生成にはtool/passwordHasher.exeを使用
   admin_user: "admin"
-  admin_password_hash: "$2a$10$X7.p8pG..." 
+  admin_password_hash: "" 
 
 retention:
   # ログの保持期間（日）。この期間を過ぎたログは自動削除対象となる

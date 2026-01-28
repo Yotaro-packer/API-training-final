@@ -7,11 +7,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/monitor"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
 	"ranklogger-api/config"
 	"ranklogger-api/database"
 	"ranklogger-api/handlers"
+	"ranklogger-api/middleware"
 )
 
 func main() {
@@ -48,8 +50,8 @@ func main() {
 	api := app.Group("/api/v1") // バージョニング
 
 	api.Get("/records", handlers.GetRecords(db, cfg))
-
-	api.Post("/records", handlers.PostRecord(db, cfg))
+	api.Post("/records", middleware.GameClientAuth(cfg), handlers.PostRecord(db, cfg))
+	api.Get("/metrics", middleware.AdminAuth(cfg), monitor.New(monitor.Config{Title: "RankLogger Metrics Page"}))
 
 	// 6. サーバーの起動
 	log.Printf("サーバーを起動します (Port: %d)...", cfg.Server.Port)

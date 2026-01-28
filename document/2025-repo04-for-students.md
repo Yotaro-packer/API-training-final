@@ -214,7 +214,7 @@ erDiagram
 | 5 | GET | /ranks/{SessionId} ||200:list\<Ranks\> | 200/400/401/403/404/429/500 | `admin`, `game-client` | 100/min |
 | 6 | GET | /logs/{SessionId} | query: log_type,offset,limit | 200: list\<logs\> | 200/400/401/403/404/429/500 | `admin` | 50/min |
 | 7 | POST | /logs | body: list\<Logs\> | 201: Message | 201/400/401/403/429/500 | `game-client` | 200/min |
-| 8 | GET | /metrics |  | 200: Metrics | 200/400/401/403/429/500 | `admin` | 20/min |
+| 8 | GET | /metrics |  | 200: Metrics | 200/400/401/403/429/500 | `admin` | 25/min |
 
 
 *   エラー仕様（例）：
