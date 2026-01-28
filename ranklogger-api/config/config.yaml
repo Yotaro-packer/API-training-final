@@ -3,6 +3,7 @@ server:
   db_path: "./game_data.db"
   # サーバー全体のタイムアウト設定（秒）
   read_timeout: 5
+  read_limit: 100
   # ブラウザからのアクセスを許可するドメイン（ランキングビューアー用）
   # すべて許可する場合は ["*"]、制限する場合は ["http://localhost:3000"]など
   cors_allow_origins: ["*"]
@@ -11,8 +12,8 @@ auth:
   # ゲームクライアント用のAPIキー
   game_api_key: "your-game-client-secret-key"
   # 管理者認証
+  # ハッシュ化したパスワードの生成にはtool/hasher.exeを使用
   admin_user: "admin"
-  # パスワード "admin123" のBCryptハッシュ（例）
   admin_password_hash: "$2a$10$X7.p8pG..." 
 
 retention:

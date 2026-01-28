@@ -97,10 +97,6 @@ func PostRecord(db *sql.DB, cfg *config.Config) fiber.Handler {
 // handlers/records.go に追加
 func GetRecords(db *sql.DB, cfg *config.Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// デフォルト値
-		limit := 10
-		offset := 0
-
 		// ランキング有効チェック
 		if len(cfg.SortableColumns) == 0 {
 			return c.JSON(fiber.Map{
@@ -146,13 +142,16 @@ func GetRecords(db *sql.DB, cfg *config.Config) fiber.Handler {
 		}
 
 		//limit, offsetの取得
-		limitStr := c.Query("limit")
-		if limitStr != "" {
-			val, err := strconv.Atoi(limitStr)
-			if err != nil || val < 0 {
-				return c.Status(400).JSON(fiber.Map{"error": "limit must be a positive integer"})
-			}
-			limit = val
+		limit := c.QueryInt("limit", 10)
+		offset := c.QueryInt("offset", 0)
+
+		if limit < 0 || offset < 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "limit and offset must be positive"})
+		}
+
+		// 最大値の制限（負荷対策）
+		if limit > cfg.Server.ReadLimit {
+			limit = cfg.Server.ReadLimit
 		}
 
 		offsetStr := c.Query("offset")

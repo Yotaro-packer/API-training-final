@@ -19,6 +19,8 @@ type (
 	ServerConfig struct {
 		Port             int      `mapstructure:"port"`
 		DBPath           string   `mapstructure:"db_path"`
+		ReadTimeout      int      `mapstructure:"read_timeout"`
+		ReadLimit        int      `mapstructure:"read_limit"`
 		CORSAllowOrigins []string `mapstructure:"cors_allow_origins"`
 	}
 
