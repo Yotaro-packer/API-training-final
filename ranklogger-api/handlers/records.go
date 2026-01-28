@@ -85,12 +85,18 @@ func PostRecord(db *sql.DB, cfg *config.Config) fiber.Handler {
 				created_at = CURRENT_TIMESTAMP;
 		`
 
-		_, err := db.Exec(query, input.UUID, input.PlayCount, string(jsonData))
+		result, err := db.Exec(query, input.UUID, input.PlayCount, string(jsonData))
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "データベースへの保存に失敗しました"})
 		}
 
-		return c.Status(201).JSON(fiber.Map{"message": "記録が保存されました"})
+		// 挿入された行のIDを取得
+		lastId, _ := result.LastInsertId()
+
+		return c.Status(201).JSON(fiber.Map{
+			"message":    "記録が保存されました",
+			"session_id": lastId,
+		})
 	}
 }
 
@@ -204,6 +210,53 @@ func GetRecords(db *sql.DB, cfg *config.Config) fiber.Handler {
 		return c.JSON(fiber.Map{
 			"meta": cfg.SortableColumns, // UI側はこの配列を見てタブやボタンを作れる
 			"data": results,
+		})
+	}
+}
+
+func GetRanks(db *sql.DB, cfg *config.Config) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		sessionId := c.Params("SessionId")
+		sortBy := c.Query("sort_by", cfg.SortableColumns[0].Name)
+
+		// 1. ソート対象のバリデーション
+		var currentSort config.SortOption
+		found := false
+		for _, opt := range cfg.SortableColumns {
+			if opt.Name == sortBy {
+				currentSort = opt
+				found = true
+				break
+			}
+		}
+		if !found {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid sort key"})
+		}
+
+		// 2. ウィンドウ関数を使って特定のIDの順位を抽出するクエリ
+		// CTE (WITH句) で全行に順位を振り、外側で特定のIDで絞り込む
+		query := fmt.Sprintf(`
+			WITH ranked_sessions AS (
+				SELECT 
+					id,
+					RANK() OVER (ORDER BY %s %s) as current_rank
+				FROM sessions
+				WHERE disable = FALSE
+			)
+			SELECT current_rank FROM ranked_sessions WHERE id = ?`,
+			currentSort.Name, currentSort.Order,
+		)
+
+		var rank int
+		err := db.QueryRow(query, sessionId).Scan(&rank)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "セッションが見つかりません"})
+		}
+
+		return c.JSON(fiber.Map{
+			"session_id": sessionId,
+			"sort_by":    sortBy,
+			"rank":       rank,
 		})
 	}
 }

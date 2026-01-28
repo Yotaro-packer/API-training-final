@@ -49,8 +49,12 @@ func main() {
 	// 5. ルーティング（エンドポイントと処理の紐付け）
 	api := app.Group("/api/v1") // バージョニング
 
+	// ランキング
 	api.Get("/records", handlers.GetRecords(db, cfg))
 	api.Post("/records", middleware.GameClientAuth(cfg), handlers.PostRecord(db, cfg))
+	api.Get("/ranks/:SessionId", middleware.GameClientAuth(cfg), handlers.GetRanks(db, cfg))
+
+	// 分析
 	api.Get("/metrics", middleware.AdminAuth(cfg), monitor.New(monitor.Config{Title: "RankLogger Metrics Page"}))
 
 	// 6. サーバーの起動
