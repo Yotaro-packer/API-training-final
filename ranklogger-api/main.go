@@ -20,14 +20,14 @@ func main() {
 	// 1. 設定ファイルの読み込み
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("設定の読み込みに失敗しました: %v", err)
+		log.Fatalf("Load config failed: %v", err)
 	}
 
 	// 2. データベースの初期化
 	// InitDBの中で、テーブル作成や仮想列の追加が実行されます
 	db, err := database.InitDB(cfg)
 	if err != nil {
-		log.Fatalf("データベースの初期化に失敗しました: %v", err)
+		log.Fatalf("Initialize DB failed: %v", err)
 	}
 	defer db.Close() // アプリ終了時に安全にDBを閉じる
 
@@ -50,16 +50,20 @@ func main() {
 	api := app.Group("/api/v1") // バージョニング
 
 	// ランキング
-	api.Get("/records", handlers.GetRecords(db, cfg))
+	api.Get("/records/detail", middleware.AdminAuth(cfg), handlers.GetRecords(db, cfg, true))
+	api.Get("/records", handlers.GetRecords(db, cfg, false))
 	api.Post("/records", middleware.GameClientAuth(cfg), handlers.PostRecord(db, cfg))
 	api.Get("/ranks/:SessionId", middleware.GameClientAuth(cfg), handlers.GetRanks(db, cfg))
+
+	// ログ
+	api.Post("/logs", middleware.GameClientAuth(cfg), handlers.PostLogs(db))
 
 	// 分析
 	api.Get("/metrics", middleware.AdminAuth(cfg), monitor.New(monitor.Config{Title: "RankLogger Metrics Page"}))
 
 	// 6. サーバーの起動
-	log.Printf("サーバーを起動します (Port: %d)...", cfg.Server.Port)
+	log.Printf("Starting server (Port: %d)...", cfg.Server.Port)
 	if err := app.Listen(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
-		log.Fatalf("サーバーの起動に失敗しました: %v", err)
+		log.Fatalf("Start server failed: %v", err)
 	}
 }

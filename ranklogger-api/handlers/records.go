@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"ranklogger-api/config"
+	"ranklogger-api/middleware"
 	"ranklogger-api/models"
 )
 
@@ -23,7 +24,7 @@ func PostRecord(db *sql.DB, cfg *config.Config) fiber.Handler {
 		// JSONの解析
 		var input models.GameRecordInput
 		if err := c.BodyParser(&input); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "JSONの形式が正しくありません"})
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid JSON"})
 		}
 		// 基本構造のバリデーション (Fiberガイドの手法)
 		if err := validate.Struct(input); err != nil {
@@ -78,30 +79,30 @@ func PostRecord(db *sql.DB, cfg *config.Config) fiber.Handler {
 		// SQLiteの UPSERT (INSERT ... ON CONFLICT)
 		// uuid と play_count の組み合わせが重複していたら data を更新する
 		query := `
-			INSERT INTO sessions (uuid, play_count, data)
-			VALUES (?, ?, jsonb(?))
+			INSERT INTO sessions (uuid, play_count, data, ip_address)
+			VALUES (?, ?, jsonb(?), ?)
 			ON CONFLICT(uuid, play_count) DO UPDATE SET
 				data = jsonb(excluded.data),
 				created_at = CURRENT_TIMESTAMP;
 		`
 
-		result, err := db.Exec(query, input.UUID, input.PlayCount, string(jsonData))
+		result, err := db.Exec(query, input.UUID, input.PlayCount, string(jsonData), middleware.GetTrustedIP(c))
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "データベースへの保存に失敗しました"})
+			return c.Status(500).JSON(fiber.Map{"error": "Record insert failed"})
 		}
 
 		// 挿入された行のIDを取得
 		lastId, _ := result.LastInsertId()
 
 		return c.Status(201).JSON(fiber.Map{
-			"message":    "記録が保存されました",
+			"message":    "Record registered successfully",
 			"session_id": lastId,
 		})
 	}
 }
 
 // handlers/records.go に追加
-func GetRecords(db *sql.DB, cfg *config.Config) fiber.Handler {
+func GetRecords(db *sql.DB, cfg *config.Config, detail bool) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// ランキング有効チェック
 		if len(cfg.SortableColumns) == 0 {
@@ -130,12 +131,15 @@ func GetRecords(db *sql.DB, cfg *config.Config) fiber.Handler {
 
 		// 設定ファイルの record_schema にある全ての項目を抽出対象にする
 		var selectColumns []string
+		// /records/detailなら詳細情報を表示
+		if detail {
+			selectColumns = []string{"id", "uuid", "play_count", "ip_address", "disable", "created_at"}
+		}
+
 		for _, field := range cfg.Schema {
 			col := fmt.Sprintf("(data ->> '$.%s') AS %s", field.Name, field.Name)
 			selectColumns = append(selectColumns, col)
 		}
-		// カンマで連結
-		selection := strings.Join(selectColumns, ", ")
 
 		isReverse, _ := strconv.ParseBool(c.Query("is_reverse"))
 		finalOrder := currentSort.Order
@@ -147,7 +151,13 @@ func GetRecords(db *sql.DB, cfg *config.Config) fiber.Handler {
 			}
 		}
 
-		//limit, offsetの取得
+		// 順位の付与
+		rankCol := fmt.Sprintf("RANK() OVER (ORDER BY %s %s) AS rank", sortBy, finalOrder)
+		selectColumns = append([]string{rankCol}, selectColumns...)
+
+		selection := strings.Join(selectColumns, ", ")
+
+		// limit, offsetの取得
 		limit := c.QueryInt("limit", 10)
 		offset := c.QueryInt("offset", 0)
 
@@ -250,7 +260,7 @@ func GetRanks(db *sql.DB, cfg *config.Config) fiber.Handler {
 		var rank int
 		err := db.QueryRow(query, sessionId).Scan(&rank)
 		if err != nil {
-			return c.Status(404).JSON(fiber.Map{"error": "セッションが見つかりません"})
+			return c.Status(404).JSON(fiber.Map{"error": "Session not found"})
 		}
 
 		return c.JSON(fiber.Map{

@@ -23,6 +23,7 @@ func InitDB(cfg *config.Config) (*sql.DB, error) {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		uuid TEXT NOT NULL,
 		play_count INTEGER NOT NULL,
+		ip_address TEXT NOT NULL,
 		data BLOB,
 		disable BOOLEAN DEFAULT FALSE,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
