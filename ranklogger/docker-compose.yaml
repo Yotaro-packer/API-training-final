@@ -1,0 +1,10 @@
+services:
+  api:
+    build: .
+    image: ranklogger-image
+    container_name: ranklogger-api
+    ports:
+      - "3000:8080"
+    volumes:
+      - ./data:/data
+    restart: always

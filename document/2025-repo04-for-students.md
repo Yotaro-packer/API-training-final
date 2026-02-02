@@ -211,7 +211,7 @@ erDiagram
 | 2 | POST | /records | body: GameRecord | 200/201: Message | 200/201/400/401/403/429/500 | `game-client` | 200/min  |
 | 3 | GET | /records/detail | query: sort_by,is_reverse,offset,limit | 200: list\<RecordsWithDetail\> | 200/400/401/403/429/500 | `admin` | 20/min |
 | 4 | PATCH | /records/{SessionId} | body: disable | 200:message | 200/400/401/403/404/429/500 | `admin` | 100/min |
-| 5 | GET | /ranks/{SessionId} ||200:list\<Ranks\> | 200/400/401/403/404/429/500 | `admin`, `game-client` | 100/min |
+| 5 | GET | /ranks/{SessionId} ||200:list\<Ranks\> | 200/400/401/403/404/429/500 | `admin`, `game-client` | 200/min |
 | 6 | GET | /logs/{SessionId} | query: log_type,offset,limit | 200: list\<logs\> | 200/400/401/403/404/429/500 | `admin` | 50/min |
 | 7 | POST | /logs | body: list\<Logs\> | 201: Message | 201/400/401/403/429/500 | `game-client` | 200/min |
 | 8 | GET | /metrics |  | 200: Metrics | 200/400/401/403/429/500 | `admin` | 25/min |
@@ -615,6 +615,11 @@ paths:
         required: true
         content:
           application/json:
+            uuid:
+              type: string
+              format: uuid
+            play_count:
+              type: integer
             schema:
               type: array
               items:
@@ -740,16 +745,9 @@ components:
     LogEntryInput:
       type: object
       required:
-        - uuid
-        - play_count
         - log_type
         - content
       properties:
-        uuid:
-          type: string
-          format: uuid
-        play_count:
-          type: integer
         log_type:
           type: integer
         content:

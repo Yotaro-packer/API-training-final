@@ -1,0 +1,82 @@
+SERVER:
+  PORT: 8080
+  DB_PATH: "./data/game_data.db"
+  # サーバー全体のタイムアウト設定（秒）
+  READ_TIMEOUT: 10
+  # 一度に取得できるレコードの最大数
+  READ_LIMIT: 100
+  # ブラウザからのアクセスを許可するドメイン（ランキングビューアー用）
+  # すべて許可する場合は ["*"]、制限する場合は ["http://localhost:3000"]など
+  CORS_ALLOW_ORIGINS: ["*"]
+  # X-Forwarded-Forの最後から何番目のIPアドレスをクライアントのIPアドレスとして扱うか
+  # プロキシの設定で、信頼できるプロキシの物を無視したときの一番最後のIPアドレスをX-Forwarded-Forに追加するようにして、設定したプロキシがこのアプリから見て何番目かをここに記載する。
+  CLIENT_IP_FROM_LAST: 1
+
+AUTH:
+  # ゲームクライアント用のAPIキー
+  GAME_API_KEY: "test-game-client-secret-key"
+  # 管理者認証
+  # ハッシュ化したパスワードの生成にはtool/passwordHasher.exeを使用
+  ADMIN_USER: "admin"
+  ADMIN_PASSWORD_HASH: "$2a$10$rDe2Tz7cnTAI369bjIVKueGPfosp9nZvEs1FBqhVH7c.6ps68508W" 
+
+RETENTION:
+  # ログの保持期間（日）。この期間を過ぎたログは自動削除対象となる
+  # 0 または -1 を指定した場合は「無期限保持（自動削除なし）」として動作
+  LOG_RETENTION_DAYS: 0
+
+RATE_LIMITS:
+  # IP + UUID単位の制限 (req/min)
+  USER_LIMIT: 50
+  # エンドポイントごとのグローバル制限 (req/min)
+  ENDPOINTS:
+    GET_RECORDS:
+      MAX: 100
+      EXPIRATION_SECONDS: 30
+    POST_RECORDS:
+      MAX: 100
+      EXPIRATION_SECONDS: 30
+    PATCH_RECORDS:
+      MAX: 100
+      EXPIRATION_SECONDS: 60
+    GET_RECORDS_DETAIL:
+      MAX: 20
+      EXPIRATION_SECONDS: 60
+    GET_RANKS:
+      MAX: 100
+      EXPIRATION_SECONDS: 30
+    GET_LOGS:
+      MAX: 50
+      EXPIRATION_SECONDS: 60
+    POST_LOGS:
+      MAX: 200
+      EXPIRATION_SECONDS: 60
+    GET_METRICS:
+      MAX: 25
+      EXPIRATION_SECONDS: 60
+
+# ランキングレコードのデータ構造（JSON領域内の要素定義）
+# ここで定義したものがDBの仮想列（Virtual Columns）として生成される
+RECORD_SCHEMA:
+  - NAME: "display_name"
+    TYPE: "TEXT"
+    IS_INDEX: false # ランキング集計対象外（表示用）
+    MIN: 3
+    MAX: 20
+  
+  - NAME: "score"
+    TYPE: "INTEGER"
+    IS_INDEX: true
+    ORDER: "desc"   # 大きい方が上位
+  
+  - NAME: "play_time"
+    TYPE: "FLOAT"
+    IS_INDEX: true
+    ORDER: "asc"    # 小さい方（速い方）が上位
+    MIN: 0
+  
+  - NAME: "item_count"
+    TYPE: "INTEGER"
+    IS_INDEX: true
+    ORDER: "desc"
+    MIN: 0

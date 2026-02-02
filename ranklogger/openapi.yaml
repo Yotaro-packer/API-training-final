@@ -1,0 +1,467 @@
+openapi: 3.0.3
+info:
+  title: Game Backend API (Lightweight)
+  description: |
+    ゲーム開発者向け軽量バックエンドAPIの仕様定義。
+    SQLite + JSONカラムを活用し、スキーマレスなデータ保存とランキング集計を提供する。
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: ローカル開発環境
+  - url: http://localhost:3000/api/v1
+    description: ローカル（Docker）環境
+  - url: https://hogehoge-fizz-buzz.ngrok-free.dev/api/v1
+    description: ngrokの無料プランによるhttps化したリンク例
+
+tags:
+  - name: Public
+    description: 誰でもアクセス可能なエンドポイント
+  - name: GameClient
+    description: ゲームクライアントからのデータ送信用（APIキーが必要）
+  - name: Admin
+    description: 管理者用・詳細データ閲覧用（管理者パスワードが必要）
+
+paths:
+  # ----------------------------------------------------------------
+  # 1. GET /records (ランキング取得)
+  # ----------------------------------------------------------------
+  /records:
+    get:
+      summary: ランキングの取得
+      description: |
+        集計済みのランキングデータを取得する。<br>
+        disable=trueのレコードは除外される。<br>
+        レート制限: 200/min (Global)
+      tags:
+        - Public
+      security: [] # Public access
+      parameters:
+        - name: sort_by
+          in: query
+          description: ソート基準となるキー（例：score, time）
+          schema:
+            type: string
+            default: score
+        - name: is_reverse
+          in: query
+          description: Trueでランキング下位から表示する
+          schema:
+            type: boolean
+            default: false
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 100
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicRecord'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    # ----------------------------------------------------------------
+    # 2. POST /records (プレイレコード/スコア登録)
+    # ----------------------------------------------------------------
+    post:
+      summary: プレイ結果の登録
+      description: |
+        ゲームプレイの結果を登録する。<br>
+        レート制限: 200/min (Global)
+      tags:
+        - GameClient
+      security:
+        - GameApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameRecordInput'
+      responses:
+        '201':
+          description: 新規レコード作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ----------------------------------------------------------------
+  # 3. GET /records/detail (管理者向け詳細取得)
+  # ----------------------------------------------------------------
+  /records/detail:
+    get:
+      summary: レコード詳細リストの取得（管理者用）
+      description: |
+        不正判定フラグ(disable)やIPアドレスなどを含む詳細なリストを取得する。<br>
+        レート制限: 20/min
+      tags:
+        - Admin
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: sort_by
+          in: query
+          description: ソート基準となるキー<br>score, timeなどの登録項目に加え、created_atやid(レコードID)も使用できる
+          schema:
+            type: string
+            default: score
+        - name: is_reverse
+          in: query
+          description: Trueでランキング下位から表示する
+          schema:
+            type: boolean
+            default: false
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: 詳細リスト
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminRecordDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ----------------------------------------------------------------
+  # 4. PATCH /records/{SessionId} (レコード無効化)
+  # ----------------------------------------------------------------
+  /records/{SessionId}:
+    patch:
+      summary: レコードの無効化/有効化
+      description: |
+        特定のセッションレコードをランキングから除外(disable)する。<br>
+        レート制限: 100/min
+      tags:
+        - Admin
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: SessionId
+          in: path
+          required: true
+          description: 対象のセッションID
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                disable:
+                  type: boolean
+                  description: trueでランキング除外
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ----------------------------------------------------------------
+  # 5. GET /ranks/{SessionId} (順位確認)
+  # ----------------------------------------------------------------
+  /ranks/{SessionId}:
+    get:
+      summary: 特定セッションの順位確認
+      description: |
+        指定されたセッションIDが現在何位に位置するかを取得する。<br>
+        レート制限: 100/min
+      tags:
+        - GameClient
+      security:
+        - GameApiKey: []
+        - AdminAuth: []
+      parameters:
+        - name: SessionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 順位情報
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RankInfo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ----------------------------------------------------------------
+  # 6. GET /logs/{SessionId} (ログ取得)
+  # ----------------------------------------------------------------
+  /logs/{SessionId}:
+    get:
+      summary: プレイログの取得
+      description: |
+        特定のプレイセッションに紐付くログ一覧を取得する。<br>
+        レート制限: 50/min
+      tags:
+        - Admin
+      security:
+        - AdminAuth: []
+      parameters:
+        - name: SessionId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: log_type
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: ログ一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogEntry'
+
+  # ----------------------------------------------------------------
+  # 7. POST /logs (ログ一括登録)
+  # ----------------------------------------------------------------
+  /logs:
+    post:
+      summary: プレイログのバッチ登録
+      description: |
+        クライアントでバッファリングされたログを配列として一括送信する。<br>
+        初回送信時にセッションが存在しない場合、自動的に新規セッションが確保される。<br>
+        レート制限: 200/min
+      tags:
+        - GameClient
+      security:
+        - GameApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/LogEntryInput'
+      responses:
+        '201':
+          description: ログ保存成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessMessage'
+
+  # ----------------------------------------------------------------
+  # 8. GET /metrics (サーバーメトリクス)
+  # ----------------------------------------------------------------
+  /metrics:
+    get:
+      summary: サーバー稼働情報の取得
+      description: |
+        総セッション数、メモリ使用量、エラー率などの統計情報を取得する。<br>
+        レート制限: 20/min
+      tags:
+        - Admin
+      security:
+        - AdminAuth: []
+      responses:
+        '200':
+          description: メトリクス情報
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerMetrics'
+
+# ----------------------------------------------------------------
+# コンポーネント定義 (データ構造・セキュリティ等)
+# ----------------------------------------------------------------
+components:
+  securitySchemes:
+    # ゲームクライアント用APIキー
+    GameApiKey:
+      type: apiKey
+      in: header
+      name: X-Game-Key
+    # 管理者用認証 (Basic認証 または 設定ファイル定義のBearer)
+    # ここでは実装の簡易さを考慮しBasic認証の例を記載
+    AdminAuth:
+      type: http
+      scheme: basic
+
+  schemas:
+    # 汎用メッセージ
+    SuccessMessage:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Success"
+    
+    # 公開用レコード (ランキング表示用)
+    PublicRecord:
+      type: object
+      properties:
+        rank:
+          type: integer
+        display_name:
+          type: string
+        score:
+          type: integer
+        # dataの中身は設定ファイルにより可変
+        data:
+          type: object
+          additionalProperties: true
+          description: "設定ファイルで定義された任意のJSONデータ"
+
+    # 入力用レコード
+    GameRecordInput:
+      type: object
+      required:
+        - uuid
+        - play_count
+        - data
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        play_count:
+          type: integer
+        data:
+          type: object
+          additionalProperties: true
+
+    # 管理者用詳細レコード
+    AdminRecordDetail:
+      allOf:
+        - $ref: '#/components/schemas/PublicRecord'
+        - type: object
+          properties:
+            uuid:
+              type: string
+            session_id:
+              type: string
+            ip_address:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            disable:
+              type: boolean
+
+    # 順位情報
+    RankInfo:
+      type: object
+      properties:
+        rank:
+          type: integer
+        total_records:
+          type: integer
+        percentile:
+          type: number
+          format: float
+
+    # ログ入力
+    LogEntryInput:
+      type: object
+      required:
+        - uuid
+        - play_count
+        - data
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        play_count:
+          type: integer
+        data:
+          type: array
+          items:
+            type: object
+            required:
+              - log_type
+              - content
+            properties:
+              log_type:
+                type: integer
+              content:
+                type: object
+
+    # ログ出力
+    LogEntry:
+      allOf:
+        - $ref: '#/components/schemas/LogEntryInput'
+        - type: object
+          properties:
+            id:
+              type: integer
+            server_timestamp:
+              type: string
+              format: date-time
+
+    # メトリクス
+    ServerMetrics:
+      type: object
+      properties:
+        uptime_seconds:
+          type: integer
+        total_sessions:
+          type: integer
+        requests_per_minute:
+          type: number
+        db_size_bytes:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: パラメータ不正
+    Unauthorized:
+      description: 認証失敗 (キーまたはパスワード不一致)
+    NotFound:
+      description: リソースが存在しない
+    TooManyRequests:
+      description: レート制限超過
+    InternalServerError:
+      description: サーバー内部エラー
