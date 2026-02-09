@@ -20,6 +20,7 @@ type (
 
 	ServerConfig struct {
 		Port             int      `mapstructure:"PORT"`
+		APIRootPath      string   `mapstructure:"API_ROOT_PATH"`
 		DBPath           string   `mapstructure:"DB_PATH"`
 		ReadTimeout      int      `mapstructure:"READ_TIMEOUT"`
 		ReadLimit        int      `mapstructure:"READ_LIMIT"`

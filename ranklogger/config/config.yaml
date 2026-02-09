@@ -1,6 +1,7 @@
 SERVER:
   PORT: 8080
   DB_PATH: ./data/game_data.db
+  API_ROOT_PATH: /api/v1
   # サーバー全体のタイムアウト設定（秒）
   READ_TIMEOUT: 10
   # 一度に取得できるレコードの最大数

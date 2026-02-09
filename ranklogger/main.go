@@ -104,7 +104,7 @@ func main() {
 	// yamlファイル自体を静的ファイルとして公開しておく必要があります
 	app.Static("/openapi.yaml", "./openapi.yaml")
 
-	api := app.Group("/api/v1") // バージョニング
+	api := app.Group(cfg.Server.APIRootPath) // バージョニングをする
 
 	// ランキング
 	api.Get("/records/detail/:Tag?", middleware.GlobalLimit(cfg, "get_records_detail"),
