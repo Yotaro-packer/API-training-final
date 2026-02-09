@@ -22,9 +22,12 @@ func InitDB(cfg *config.Config) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// ついでに同期設定も最適化（性能と安全性のバランス）
+	// 同期設定も最適化（性能と安全性のバランス）
 	// NORMAL にすると、WALモード時に十分な安全性と高いパフォーマンスを両立できる
 	_, _ = db.Exec("PRAGMA synchronous=NORMAL;")
+
+	// auto_vacuumをINCREMENTALにすると、データベース全体ではなく削除したテーブルだけ（logsテーブルだけ）再構築される
+	_, _ = db.Exec("PRAGMA auto_vacuum = INCREMENTAL;")
 
 	var playCountAddText = [2]string{}
 	// 1. セッションテーブルの作成
