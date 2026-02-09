@@ -13,23 +13,43 @@ import (
 func InitDB(cfg *config.Config) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", cfg.Server.DBPath)
 	if err != nil {
+		return nil, fmt.Errorf("%v file path: %v", err, cfg.Server.DBPath)
+	}
+
+	// WALモードを有効化
+	_, err = db.Exec("PRAGMA journal_mode=WAL;")
+	if err != nil {
 		return nil, err
 	}
 
+	// ついでに同期設定も最適化（性能と安全性のバランス）
+	// NORMAL にすると、WALモード時に十分な安全性と高いパフォーマンスを両立できる
+	_, _ = db.Exec("PRAGMA synchronous=NORMAL;")
+
+	var playCountAddText = [2]string{}
 	// 1. セッションテーブルの作成
-	createSessionTable := `
+	if cfg.Server.EnablePlayCount {
+		playCountAddText[0] = "play_count INTEGER NOT NULL,"
+		playCountAddText[1] = ", play_count"
+	}
+	createSessionTable := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		uuid TEXT NOT NULL,
-		play_count INTEGER NOT NULL,
+		%s
 		ip_address TEXT NOT NULL,
 		data BLOB,
 		disable BOOLEAN DEFAULT FALSE,
 		created_at DATETIME DEFAULT (datetime('now', 'localtime')),
-		UNIQUE(uuid, play_count)
-	);`
+		UNIQUE(uuid%s)
+	);`, playCountAddText[0], playCountAddText[1])
 
 	if _, err := db.Exec(createSessionTable); err != nil {
+		return nil, err
+	}
+
+	// 期間検索を高速化
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at)"); err != nil {
 		return nil, err
 	}
 
@@ -52,13 +72,18 @@ func InitDB(cfg *config.Config) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// 期間検索を高速化
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at)"); err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 
 // カラム追加のロジックだけを分けた補助関数（内部で使う用）
 func setupDynamicColumns(db *sql.DB, cfg *config.Config) error {
 	// 1. 現在のテーブルにある列名をすべて取得する
-	rows, err := db.Query("PRAGMA table_info(sessions);")
+	rows, err := db.Query("PRAGMA table_xinfo(sessions);")
 	if err != nil {
 		return err
 	}
@@ -68,11 +93,12 @@ func setupDynamicColumns(db *sql.DB, cfg *config.Config) error {
 	for rows.Next() {
 		var cid int
 		var name, dtype string
-		var notnull, pk int
+		var notnull, pk, hidden int
 		var dflt_value interface{}
 
-		// PRAGMA table_info は cid, name, type, notnull, dflt_value, pk を返す
-		if err := rows.Scan(&cid, &name, &dtype, &notnull, &dflt_value, &pk); err != nil {
+		// PRAGMA table_info は cid, name, type, notnull, dflt_value, pk を返すが、生成列については返さない
+		// PRAGMA table_xinfo はこれらに加えて hidden も返し、生成列についても返す（hidden=1は内部列、hidden=2は生成列）
+		if err := rows.Scan(&cid, &name, &dtype, &notnull, &dflt_value, &pk, &hidden); err != nil {
 			return err
 		}
 		existingColumns[name] = true // 存在する列名を記録
@@ -81,21 +107,25 @@ func setupDynamicColumns(db *sql.DB, cfg *config.Config) error {
 	// 2. 設定ファイルのスキーマをループし、存在しない列だけ追加する
 	for _, field := range cfg.Schema {
 		if field.IsIndex {
-			if _, exists := existingColumns[field.Name]; !exists {
+			name := field.Name
+			if field.Tag != "" {
+				name = field.Tag + "_" + field.Name
+			}
+			if _, exists := existingColumns[name]; !exists {
 				// 列が存在しない場合のみ、仮想列を追加
 				alterSQL := fmt.Sprintf(
 					"ALTER TABLE sessions ADD COLUMN %s %s GENERATED ALWAYS AS (data ->> '$.%s') VIRTUAL;",
-					field.Name, field.Type, field.Name,
+					name, field.Type, name,
 				)
 				if _, err := db.Exec(alterSQL); err != nil {
-					log.Printf("Failed to add column %s: %v", field.Name, err)
+					log.Printf("Failed to add column %s: %v", name, err)
 					continue
 				}
-				log.Printf("Added virtual column: %s", field.Name)
+				log.Printf("Added virtual column: %s", name)
 			}
 
 			// インデックス作成 (CREATE INDEX IF NOT EXISTS はSQLite側で重複を弾いてくれるのでそのままでOK)
-			indexSQL := fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s ON sessions(%s);", field.Name, field.Name)
+			indexSQL := fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s ON sessions(%s);", name, name)
 			db.Exec(indexSQL)
 		}
 	}

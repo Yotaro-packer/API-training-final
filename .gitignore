@@ -1,1 +1,3 @@
-ranklogger/game_data.db
+ranklogger/data/game_data.db*
+ranklogger/data/system.log
+tool/*

@@ -10,8 +10,6 @@ servers:
     description: ローカル開発環境
   - url: http://localhost:3000/api/v1
     description: ローカル（Docker）環境
-  - url: https://hogehoge-fizz-buzz.ngrok-free.dev/api/v1
-    description: ngrokの無料プランによるhttps化したリンク例
 
 tags:
   - name: Public
@@ -38,7 +36,7 @@ paths:
       parameters:
         - name: sort_by
           in: query
-          description: ソート基準となるキー（例：score, time）
+          description: ソート基準となるキー（例：score, play_time）
           schema:
             type: string
             default: score
@@ -121,7 +119,7 @@ paths:
       parameters:
         - name: sort_by
           in: query
-          description: ソート基準となるキー<br>score, timeなどの登録項目に加え、created_atやid(レコードID)も使用できる
+          description: ソート基準となるキー<br>score, play_timeなどの登録項目に加え、created_atやid(レコードID)も使用できる
           schema:
             type: string
             default: score
@@ -350,11 +348,11 @@ components:
           type: string
         score:
           type: integer
-        # dataの中身は設定ファイルにより可変
-        data:
-          type: object
-          additionalProperties: true
-          description: "設定ファイルで定義された任意のJSONデータ"
+        play_time:
+          type: number
+          format: float
+        item_count:
+          type: integer
 
     # 入力用レコード
     GameRecordInput:
@@ -371,7 +369,16 @@ components:
           type: integer
         data:
           type: object
-          additionalProperties: true
+          properties:
+            display_name:
+              type: string
+            score:
+              type: integer
+            play_time:
+              type: number
+              format: float
+            item_count:
+              type: integer
 
     # 管理者用詳細レコード
     AdminRecordDetail:
@@ -437,7 +444,7 @@ components:
           properties:
             id:
               type: integer
-            server_timestamp:
+            created_at:
               type: string
               format: date-time
 

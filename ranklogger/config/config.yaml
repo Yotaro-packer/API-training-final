@@ -1,32 +1,37 @@
 SERVER:
   PORT: 8080
-  DB_PATH: "./data/game_data.db"
+  DB_PATH: ./data/game_data.db
   # サーバー全体のタイムアウト設定（秒）
   READ_TIMEOUT: 10
   # 一度に取得できるレコードの最大数
   READ_LIMIT: 100
   # ブラウザからのアクセスを許可するドメイン（ランキングビューアー用）
-  # すべて許可する場合は ["*"]、制限する場合は ["http://localhost:3000"]など
+  # すべて許可する場合は ["*"]、制限する場合は ["http://localhost:3000", "..."]など
+  # ハイフンによるyaml標準の配列表記でもOK
   CORS_ALLOW_ORIGINS: ["*"]
   # X-Forwarded-Forの最後から何番目のIPアドレスをクライアントのIPアドレスとして扱うか
   # プロキシの設定で、信頼できるプロキシの物を無視したときの一番最後のIPアドレスをX-Forwarded-Forに追加するようにして、設定したプロキシがこのアプリから見て何番目かをここに記載する。
   CLIENT_IP_FROM_LAST: 1
+  # play_countによるレコードの区別を有効化するかどうか
+  # Falseの場合、POST時のレコードの新規登録/上書き、ログが結びつくレコードIDの決定はuuidのみに基づく
+  # Trueの場合はuuidとplay_countの組に基づき、リクエストボディにplay_countも含める必要がある
+  ENABLE_PLAY_COUNT: true
 
 AUTH:
   # ゲームクライアント用のAPIキー
-  GAME_API_KEY: "test-game-client-secret-key"
+  GAME_API_KEY: test-game-client-secret-key
   # 管理者認証
   # ハッシュ化したパスワードの生成にはtool/passwordHasher.exeを使用
-  ADMIN_USER: "admin"
-  ADMIN_PASSWORD_HASH: "$2a$10$rDe2Tz7cnTAI369bjIVKueGPfosp9nZvEs1FBqhVH7c.6ps68508W" 
+  ADMIN_USER: admin
+  ADMIN_PASSWORD_HASH: $2a$10$rDe2Tz7cnTAI369bjIVKueGPfosp9nZvEs1FBqhVH7c.6ps68508W 
 
 RETENTION:
   # ログの保持期間（日）。この期間を過ぎたログは自動削除対象となる
   # 0 または -1 を指定した場合は「無期限保持（自動削除なし）」として動作
-  LOG_RETENTION_DAYS: 0
+  # LOG_RETENTION_DAYS: 0
 
 RATE_LIMITS:
-  # IP + UUID単位の制限 (req/min)
+  # IP単位の制限 (req/min)
   USER_LIMIT: 50
   # エンドポイントごとのグローバル制限 (req/min)
   ENDPOINTS:
@@ -57,26 +62,51 @@ RATE_LIMITS:
 
 # ランキングレコードのデータ構造（JSON領域内の要素定義）
 # ここで定義したものがDBの仮想列（Virtual Columns）として生成される
+# TYPEは現状ユーザ入力が文字列か数値か判定するバリデーションとMIN/MAXのバリデーション、DBのテーブル定義にのみ使用
+# 文字列型ならMIN/MAXは文字数を、数値型ならMIN/MAXは最小値/最大値を設定する
+# SQLiteではテーブル定義と異なるデータ型でもエラーにならないが、ある程度の範囲で型変換を行ってくれる
+# TAGを設定した項目は /records/:Tag や /ranks/:Tag で指定したときだけ登録・読み取りできる
+# TAGを設定した項目はデータベース上では {TAG}_{NAME} という名前になる
+# TAGを設定した項目はIsGlobalをtrueに設定することで /records や /ranks でも読み取りのみ可能になり、 {TAG}_{NAME} という名前になる
+# TAG名には以下の単語は使用不可：detail, global, none
 RECORD_SCHEMA:
-  - NAME: "display_name"
-    TYPE: "TEXT"
+  - NAME: display_name
+    TYPE: TEXT
     IS_INDEX: false # ランキング集計対象外（表示用）
-    MIN: 3
-    MAX: 20
+    MIN: 3          # 最小3文字
+    MAX: 20         # 最大20文字
   
-  - NAME: "score"
-    TYPE: "INTEGER"
+  - NAME: score
+    TYPE: INTEGER
     IS_INDEX: true
-    ORDER: "desc"   # 大きい方が上位
+    ORDER: desc     # 大きい方が上位
   
-  - NAME: "play_time"
-    TYPE: "FLOAT"
+  - NAME: play_time
+    TYPE: FLOAT
     IS_INDEX: true
-    ORDER: "asc"    # 小さい方（速い方）が上位
+    ORDER: asc      # 小さい方（速い方）が上位
+    MIN: 0          # 最小でも0
+  
+  - NAME: item_count
+    TYPE: INTEGER
+    IS_INDEX: true
+    ORDER: desc
     MIN: 0
-  
-  - NAME: "item_count"
-    TYPE: "INTEGER"
-    IS_INDEX: true
-    ORDER: "desc"
-    MIN: 0
+
+# バリデーションで使用する文字列型の名称と数値型の名称
+# TYPE_VALIDATIONのSTRINGSに含まれていれば文字列型として、NUMBERSに含まれていれば数値型としてバリデーションを行う
+TYPE_VALIDATION:
+  STRINGS:
+    - TEXT
+    - CHAR
+    - CLOB
+    - STRING
+    - STR
+  NUMBERS:
+    - INTEGER
+    - INT
+    - REAL
+    - FLOAT
+    - DOUBLE
+    - NUMBER
+    - NUMERIC

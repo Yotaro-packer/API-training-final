@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"html"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
@@ -21,6 +22,11 @@ func PostLogs(db *sql.DB, cfg *config.Config) fiber.Handler {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid JSON"})
 		}
+
+		// play_countタグのバリデーション追加
+		validate.RegisterValidation("play_count", func(fl validator.FieldLevel) bool {
+			return !cfg.Server.EnablePlayCount || fl.Field().Int() >= 1
+		})
 
 		// バリデーション
 		if err := validate.Struct(req); err != nil {
@@ -41,18 +47,27 @@ func PostLogs(db *sql.DB, cfg *config.Config) fiber.Handler {
 
 		// 1. セッションIDを取得、なければ作成 (INSERT OR IGNORE + SELECT)
 		// dataは初期状態なので空のJSONBを入れる
-		_, err = tx.Exec(`
-			INSERT OR IGNORE INTO sessions (uuid, play_count, data, ip_address) 
-			VALUES (?, ?, jsonb('{}'), ?)`,
-			req.UUID, req.PlayCount, middleware.GetTrustedIP(c, cfg),
-		)
+
+		// play_countの有効無効の設定に応じた動的な変更
+		reqId := []interface{}{req.UUID}
+		playCountAddText := [3]string{}
+		if cfg.Server.EnablePlayCount {
+			reqId = append(reqId, req.PlayCount)
+			playCountAddText[0] = ", play_count"
+			playCountAddText[1] = ", ?"
+			playCountAddText[2] = " AND play_count = ?"
+		}
+		query := fmt.Sprintf(`
+			INSERT OR IGNORE INTO sessions (uuid%s, data, ip_address) 
+			VALUES (?%s, jsonb('{}'), ?)`, playCountAddText[0], playCountAddText[1])
+		_, err = tx.Exec(query, append(reqId, middleware.GetTrustedIP(c, cfg))...)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Session creation failed"})
 		}
 
 		var sessionId int
-		err = tx.QueryRow("SELECT id FROM sessions WHERE uuid = ? AND play_count = ?",
-			req.UUID, req.PlayCount).Scan(&sessionId)
+		query = fmt.Sprintf("SELECT id FROM sessions WHERE uuid = ?%s", playCountAddText[2])
+		err = tx.QueryRow(query, reqId...).Scan(&sessionId)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Session lookup failed"})
 		}
@@ -104,6 +119,17 @@ func GetLogs(db *sql.DB) fiber.Handler {
 		if logType != 0 {
 			query += " AND type = ?"
 			args = append(args, logType)
+		}
+
+		sinceStr := c.Query("since")
+		if sinceStr != "" {
+			// 文字列を time.Time に変換
+			sinceTime, err := time.Parse(time.RFC3339, sinceStr)
+			if err != nil {
+				return c.Status(400).JSON(fiber.Map{"error": "invalid since format (use RFC3339)"})
+			}
+			query += " AND created_at >= ?"
+			args = append(args, sinceTime)
 		}
 
 		query += fmt.Sprintf(" ORDER BY id ASC LIMIT %d OFFSET %d", limit, offset)

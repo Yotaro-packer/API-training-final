@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -49,10 +50,13 @@ func main() {
 	// レイテンシ計測用statsとミドルウェア
 	latencyStats := middleware.NewLatencyStats(1000)
 	app.Use(middleware.NewLatencyMiddleware(latencyStats))
+
 	// ユーザ単位のリミッター
 	app.Use(middleware.UserLimit(cfg))
+
 	// helmet: いろんなセキュリティ関連の設定をしてくれる
 	app.Use(helmet.New())
+
 	// logger: アクセスログをコンソールに表示
 	app.Use(logger.New(logger.Config{
 		CustomTags: map[string]logger.LogFunc{
@@ -62,11 +66,34 @@ func main() {
 		},
 		Format: "${time} | ${status} | ${latency} | ${real_ip} | ${method} | ${path} | ${error}\n",
 	}))
+
+	// audit_logger: アクセスログをファイルに書き込み
+	file, err := os.OpenFile("./data/system.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer file.Close()
+
+	app.Use(logger.New(logger.Config{
+		Output: file,
+		CustomTags: map[string]logger.LogFunc{
+			"full_ip": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+				var full_ip = strings.Join(c.GetReqHeaders()["X-Forwarded-For"], ", ")
+				if full_ip == "" {
+					full_ip = middleware.GetTrustedIP(c, cfg)
+				}
+				return output.WriteString(full_ip)
+			},
+		},
+		Format: "${time} | ${status} | ${latency} | ${full_ip} | ${method} | ${path} | ${error}\n",
+	}))
+
 	// recover: パニック（重大なエラー）が起きてもサーバーを落とさない
 	app.Use(recover.New())
+
 	// cors: 設定ファイルに基づいて外部からのアクセスを許可
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: cfg.Server.CORSAllowOrigins[0], // 簡易的に最初の設定を使用
+		AllowOrigins: strings.Join(cfg.Server.CORSAllowOrigins, ", "),
 	}))
 
 	// 5. ルーティング（エンドポイントと処理の紐付け）
@@ -80,13 +107,13 @@ func main() {
 	api := app.Group("/api/v1") // バージョニング
 
 	// ランキング
-	api.Get("/records/detail", middleware.GlobalLimit(cfg, "get_records_detail"),
+	api.Get("/records/detail/:Tag?", middleware.GlobalLimit(cfg, "get_records_detail"),
 		middleware.AdminAuth(cfg), handlers.GetRecords(db, cfg, true))
-	api.Get("/records", middleware.GlobalLimit(cfg, "get_records"),
+	api.Get("/records/:Tag?", middleware.GlobalLimit(cfg, "get_records"),
 		handlers.GetRecords(db, cfg, false))
-	api.Post("/records", middleware.GlobalLimit(cfg, "post_records"),
+	api.Post("/records/:Tag?", middleware.GlobalLimit(cfg, "post_records"),
 		middleware.GameClientAuth(cfg), handlers.PostRecord(db, cfg))
-	api.Patch("/records", middleware.GlobalLimit(cfg, "patch_records"),
+	api.Patch("/records/:SessionId", middleware.GlobalLimit(cfg, "patch_records"),
 		middleware.AdminAuth(cfg), handlers.DisableRecord(db))
 	api.Get("/ranks/:SessionId", middleware.GlobalLimit(cfg, "get_ranks"),
 		middleware.GameClientAuth(cfg), handlers.GetRanks(db, cfg))
