@@ -1,9 +1,8 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
-  title: Game Backend API (Lightweight)
+  title: RankLogger API
   description: |
-    ゲーム開発者向け軽量バックエンドAPIの仕様定義。
-    SQLite + JSONカラムを活用し、スキーマレスなデータ保存とランキング集計を提供する。
+    ゲームプレイテスター向けのAPIを誰でも作成できるアプリ"RankLogger"で生成されるAPIの標準仕様
   version: 1.0.0
 servers:
   - url: http://localhost:8080/api/v1
@@ -57,6 +56,12 @@ paths:
             type: integer
             default: 10
             maximum: 100
+        - name: since
+          in: query
+          description: RFC3339形式の文字列
+          schema:
+            type: string
+
       responses:
         '200':
           description: 成功
@@ -80,6 +85,7 @@ paths:
       summary: プレイ結果の登録
       description: |
         ゲームプレイの結果を登録する。<br>
+        設定によってレコードを特定するための項目をuuidのみかuuid+play_countかで決めることができる。<br>
         レート制限: 200/min (Global)
       tags:
         - GameClient
@@ -97,7 +103,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessMessage'
+                $ref: '#/components/schemas/PostRecordResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
@@ -139,6 +145,11 @@ paths:
           schema:
             type: integer
             default: 50
+        - name: since
+          in: query
+          description: RFC3339形式の文字列
+          schema:
+            type: string
       responses:
         '200':
           description: 詳細リスト
@@ -211,6 +222,11 @@ paths:
           required: true
           schema:
             type: integer
+        - name: since
+          in: query
+          description: RFC3339形式の文字列
+          schema:
+            type: string
       responses:
         '200':
           description: 順位情報
@@ -281,9 +297,7 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/LogEntryInput'
+              $ref: '#/components/schemas/LogEntryInput'
       responses:
         '201':
           description: ログ保存成功
@@ -344,15 +358,20 @@ components:
       properties:
         rank:
           type: integer
+          example: 1
         display_name:
           type: string
+          example: test_player
         score:
           type: integer
+          example: 100
         play_time:
           type: number
           format: float
+          example: 35.7
         item_count:
           type: integer
+          example: 8
 
     # 入力用レコード
     GameRecordInput:
@@ -367,18 +386,34 @@ components:
           format: uuid
         play_count:
           type: integer
+          example: 1
         data:
           type: object
           properties:
             display_name:
               type: string
+              example: test_post_player
             score:
               type: integer
+              example: 200
             play_time:
               type: number
               format: float
+              example: 12.34
             item_count:
               type: integer
+              example: 3
+
+    # レコード登録時レスポンス
+    PostRecordResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Success"
+        session_id:
+          type: integer
+          example: 1
 
     # 管理者用詳細レコード
     AdminRecordDetail:
@@ -388,10 +423,13 @@ components:
           properties:
             uuid:
               type: string
+              format: uuid
             session_id:
-              type: string
+              type: integer
+              example: 2
             ip_address:
               type: string
+              example: 172.0.0.1 
             created_at:
               type: string
               format: date-time
@@ -404,11 +442,13 @@ components:
       properties:
         rank:
           type: integer
-        total_records:
+          example: 1
+        sort_by:
+          type: string
+          example: score
+        session_id:
           type: integer
-        percentile:
-          type: number
-          format: float
+          example: 2
 
     # ログ入力
     LogEntryInput:
@@ -423,6 +463,7 @@ components:
           format: uuid
         play_count:
           type: integer
+          example: 2
         data:
           type: array
           items:
@@ -433,8 +474,10 @@ components:
             properties:
               log_type:
                 type: integer
+                example: 1
               content:
-                type: object
+                type: string
+                example: fizz bazz
 
     # ログ出力
     LogEntry:
@@ -444,6 +487,7 @@ components:
           properties:
             id:
               type: integer
+              example: 120
             created_at:
               type: string
               format: date-time
@@ -452,14 +496,42 @@ components:
     ServerMetrics:
       type: object
       properties:
-        uptime_seconds:
-          type: integer
-        total_sessions:
-          type: integer
-        requests_per_minute:
-          type: number
-        db_size_bytes:
-          type: integer
+        database:
+          properties:
+            total_sessions:
+              type: integer
+              example: 9
+            total_logs:
+              type: integer
+              example: 720
+            logs_today:
+              type: integer
+              example: 120
+            size_mb:
+              type: string
+              example: 0.09 MB
+        system:
+          properties:
+            goroutines:
+              type: integer
+              example: 20
+            latency_ms:
+              properties:
+                p50:
+                  type: string
+                  format: float
+                  example: 9.73
+                p90:
+                  type: string
+                  format: float
+                  example: 98.21
+                p95:
+                  type: string
+                  format: float
+                  example: 176.89
+                samples:
+                  type: integer
+                  example: 673
 
   responses:
     BadRequest:
