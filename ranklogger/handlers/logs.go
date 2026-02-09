@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"fmt"
 	"html"
+	"math/rand"
 	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 
 	"ranklogger/config"
+	"ranklogger/database"
 	"ranklogger/middleware"
 	"ranklogger/models"
 )
@@ -94,6 +96,11 @@ func PostLogs(db *sql.DB, cfg *config.Config) fiber.Handler {
 
 		if err := tx.Commit(); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "Commit failed"})
+		}
+
+		// 低確率で古いログのクリーンアップの実行（例：1/100の確率）
+		if rand.Intn(100) == 0 {
+			database.CleanupOldLogs(db, cfg.Retention.LogRetentionDays)
 		}
 
 		return c.Status(201).JSON(fiber.Map{

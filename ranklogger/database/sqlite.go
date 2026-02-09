@@ -131,3 +131,26 @@ func setupDynamicColumns(db *sql.DB, cfg *config.Config) error {
 	}
 	return nil
 }
+
+// 古いログを削除する関数
+func CleanupOldLogs(db *sql.DB, days int) {
+	if days <= 0 {
+		return // 0以下の場合は削除しない設定
+	}
+
+	go func() {
+		query := "DELETE FROM logs WHERE created_at < datetime('now', ?)"
+		interval := fmt.Sprintf("-%d days", days)
+
+		result, err := db.Exec(query, interval)
+		if err != nil {
+			log.Printf("Cleanup failed: %v", err)
+			return
+		}
+
+		rows, _ := result.RowsAffected()
+		if rows > 0 {
+			log.Printf("Cleanup: Removed %d old log entries.", rows)
+		}
+	}()
+}
